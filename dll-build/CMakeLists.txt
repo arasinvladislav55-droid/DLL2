@@ -1,36 +1,39 @@
 cmake_minimum_required(VERSION 3.20)
-project(uc_menu LANGUAGES C CXX)
+project(visuals_overlay LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
-# статическая среда выполнения: на машине игрока не нужен Visual C++ Redistributable
-set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded")
+# Статическая CRT, чтобы DLL не требовала установленного VC++ Redistributable
+set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 
 include(FetchContent)
-FetchContent_Declare(imgui   GIT_REPOSITORY https://github.com/ocornut/imgui.git          GIT_TAG v1.91.5)
-FetchContent_Declare(minhook GIT_REPOSITORY https://github.com/TsudaKageyu/minhook.git    GIT_TAG v1.3.3)
+# SOURCE_SUBDIR указывает на несуществующую папку: нужны только исходники, их CMake не запускаем
+FetchContent_Declare(imgui
+    GIT_REPOSITORY https://github.com/ocornut/imgui.git
+    GIT_TAG v1.91.9 GIT_SHALLOW TRUE SOURCE_SUBDIR _none)
+FetchContent_Declare(minhook
+    GIT_REPOSITORY https://github.com/TsudaKageyu/minhook.git
+    GIT_TAG v1.3.3 GIT_SHALLOW TRUE SOURCE_SUBDIR _none)
 FetchContent_MakeAvailable(imgui minhook)
 
-add_library(uc_menu SHARED
-    src/main.cpp src/state.cpp src/ui.cpp src/title.cpp src/postfx.cpp
+add_library(imgui_lib STATIC
     ${imgui_SOURCE_DIR}/imgui.cpp
     ${imgui_SOURCE_DIR}/imgui_draw.cpp
     ${imgui_SOURCE_DIR}/imgui_tables.cpp
     ${imgui_SOURCE_DIR}/imgui_widgets.cpp
-    ${imgui_SOURCE_DIR}/backends/imgui_impl_opengl3.cpp
+    ${imgui_SOURCE_DIR}/backends/imgui_impl_win32.cpp
+    ${imgui_SOURCE_DIR}/backends/imgui_impl_dx11.cpp)
+target_include_directories(imgui_lib PUBLIC ${imgui_SOURCE_DIR} ${imgui_SOURCE_DIR}/backends)
+target_compile_definitions(imgui_lib PUBLIC NOMINMAX _CRT_SECURE_NO_WARNINGS)
+
+add_library(minhook_lib STATIC
     ${minhook_SOURCE_DIR}/src/buffer.c
     ${minhook_SOURCE_DIR}/src/hook.c
     ${minhook_SOURCE_DIR}/src/trampoline.c
     ${minhook_SOURCE_DIR}/src/hde/hde64.c)
+target_include_directories(minhook_lib PUBLIC ${minhook_SOURCE_DIR}/include)
 
-target_include_directories(uc_menu PRIVATE
-    src ${imgui_SOURCE_DIR} ${imgui_SOURCE_DIR}/backends ${minhook_SOURCE_DIR}/include)
-target_compile_definitions(uc_menu PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
-target_link_libraries(uc_menu PRIVATE opengl32 gdi32 user32 shell32 psapi)
-set_target_properties(uc_menu PROPERTIES PREFIX "")   # файл называется uc_menu.dll, без «lib»
-if (MSVC)
-    target_compile_options(uc_menu PRIVATE /utf-8)   # русские строки в исходниках
-else()
-    # clang / mingw: всё статически, чтобы рядом с dll не требовались libstdc++ / libc++
-    target_link_options(uc_menu PRIVATE -static -static-libgcc)
-endif()
+add_library(visuals SHARED src/visuals_overlay.cpp)
+target_compile_options(visuals PRIVATE /utf-8 /W3)
+target_link_libraries(visuals PRIVATE imgui_lib minhook_lib d3d11 dxgi)
+set_target_properties(visuals PROPERTIES OUTPUT_NAME "visuals")
